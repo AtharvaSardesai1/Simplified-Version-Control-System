@@ -7,6 +7,10 @@
 #define N 10
 #define MAX_FILES_PER_COMMIT 5
 #define MAX_FILE_CONTENT_SIZE 40000
+#define MAX_USERS 100
+#define MAX_USERNAME_LENGTH 50
+#define MAX_PASSWORD_LENGTH 50
+
 
 // STRUCTURES
 
@@ -49,6 +53,11 @@ typedef struct commitStack {
     struct stackNode* top;
 } commitStack;
 
+// Structure to represent a user
+typedef struct User{
+    char username[MAX_USERNAME_LENGTH];
+    char password[MAX_PASSWORD_LENGTH];
+} User;
 
 repository* initRepository() {
     repository* newRepo = (repository*)malloc(sizeof(repository));
@@ -59,7 +68,7 @@ repository* initRepository() {
     }
     newRepo->currentBranchIndex = -1; // No branch selected initially
     newRepo->branchCount = 0;
-    return newRepo;
+    
 }
 
 // FUNCTIONS
@@ -94,6 +103,95 @@ void addParent(graphNode* child, graphNode* parent) {
     parent->nextParent = child->parent;
     child->parent = parent;
 }
+
+void addFileFunction(repository* repo) {
+    char fileName[MAX_USERNAME_LENGTH];
+    char filePath[MAX_USERNAME_LENGTH];
+    int choice;
+    
+    printf("Select input type:\n");
+    printf("1. Text input\n");
+    printf("2. File input\n");
+    printf("Enter your choice: ");
+    scanf("%d", &choice);
+    getchar(); // Consume the newline character left in the input buffer
+    
+    if (choice == 1) {
+        // Text input
+        printf("Enter text name: ");
+        fgets(fileName, MAX_USERNAME_LENGTH, stdin);
+        fileName[strcspn(fileName, "\n")] = '\0';  // Remove newline character
+        
+        printf("Enter text content: ");
+        fgets(filePath, MAX_FILE_CONTENT_SIZE, stdin);
+        filePath[strcspn(filePath, "\n")] = '\0';  // Remove newline character
+        } 
+        else if (choice == 2) {
+        // File input
+        printf("Enter file name: ");
+        fgets(fileName, MAX_USERNAME_LENGTH, stdin);
+        fileName[strcspn(fileName, "\n")] = '\0';  // Remove newline character
+        
+        printf("Enter file path: ");
+        fgets(filePath, MAX_USERNAME_LENGTH, stdin);
+        filePath[strcspn(filePath, "\n")] = '\0';  // Remove newline character
+    } else {
+        printf("Invalid choice.\n");
+        return;
+    }
+    
+    // Create a new file node
+    file* newFile = (file*)malloc(sizeof(file));
+    newFile->id = rand(); // Assign a unique file ID
+    snprintf(newFile->name, sizeof(newFile->name), "%s", fileName);
+    
+    if (choice == 1) {
+        // Copy text content to file content
+        snprintf(newFile->content, sizeof(newFile->content), "%s", filePath);
+        printf("File added successfully. ID: %d\n", newFile->id);
+    } else if (choice == 2) {
+        // Open the file
+        FILE* filePtr = fopen(filePath, "r");
+        if (filePtr != NULL) {
+            // Read file content
+            size_t bytesRead = fread(newFile->content, 1, MAX_FILE_CONTENT_SIZE - 1, filePtr);
+            if (bytesRead > 0) {
+                newFile->content[bytesRead] = '\0'; // Null-terminate the content
+                printf("File added successfully. ID: %d\n", newFile->id);
+                
+                // Store the file in the repository's file hash
+                int index = newFile->id % N;
+                if (repo->fileHash[index] == NULL) {
+                    repo->fileHash[index] = newFile;
+                } else {
+                    newFile->next = repo->fileHash[index];
+                    repo->fileHash[index] = newFile;
+                }
+            } else {
+                perror("Error reading file content");
+            }
+            fclose(filePtr);
+        } else {
+            perror("Error opening file");
+        }
+    }
+}
+
+void readFile(const char* fileName) {
+    FILE* file = fopen(fileName, "r");
+    if (file == NULL) {
+        printf("Error: Unable to open file.\n");
+        return;
+    }
+
+    char content[MAX_FILE_CONTENT_SIZE];
+    while (fgets(content, MAX_FILE_CONTENT_SIZE, file) != NULL) {
+        printf("%s", content);
+    }
+
+    fclose(file);
+}
+
 
 void addFileToCommit(commit* commit, const char* name, const char* filePath, repository* repo) {
     if (commit->fileCount < MAX_FILES_PER_COMMIT) {
@@ -143,6 +241,33 @@ void displayCommit(commit* commit, repository* repo) {
         }
     }
     printf("\n");
+}
+
+void displayDataFunction(repository* repo) {
+    int fileId;
+    printf("Enter file ID: ");
+    scanf("%d", &fileId);
+    
+    // Find the file in the repository's file hash
+    int index = fileId % N;
+    file* currentFile = repo->fileHash[index];
+    while (currentFile != NULL) {
+        if (currentFile->id == fileId) {
+            // Create a dummy commit with the file and call displayCommit function
+            commit* dummyCommit = createCommit("Dummy commit", 0, "Dummy author");
+            dummyCommit->fileCount = 1;
+            dummyCommit->fileIDs[0] = fileId;
+            
+            displayCommit(dummyCommit, repo);
+            
+            // Free memory associated with the dummy commit
+            free(dummyCommit);
+            return;
+        }
+        currentFile = currentFile->next;
+    }
+    
+    printf("File not found.\n");
 }
 
 char* getFileContent(int fileID, repository* repo) {
@@ -234,60 +359,355 @@ void displayCommitHistory(commitStack* stack) {
     }
 }
 
+void deleteMostRecentCommit(repository* repo, commitStack* stack) {
+    // Check if the stack is empty
+    if (isEmpty(stack)) {
+        printf("Error: Commit history is empty.\n");
+        return;
+    }
+
+    // Pop the most recent commit from the stack
+    commit* recentCommit = pop(stack);
+
+    // Find the graph node corresponding to the recent commit
+    graphNode* recentNode = NULL;
+    for (int i = 0; i < N; i++) {
+        graphNode* current = repo->nodes[i];
+        while (current != NULL) {
+            if (current->commit == recentCommit) {
+                recentNode = current;
+                break;
+            }
+            current = current->nextParent;
+        }
+        if (recentNode != NULL)
+            break;
+    }
+
+    // If the recent node is not found, something went wrong
+    if (recentNode == NULL) {
+        printf("Error: Recent commit node not found.\n");
+        return;
+    }
+
+    // Remove the recent node from the DAG
+    for (int i = 0; i < N; i++) {
+        graphNode* current = repo->nodes[i];
+        graphNode* prev = NULL;
+        while (current != NULL) {
+            if (current == recentNode) {
+                if (prev != NULL) {
+                    prev->nextParent = current->nextParent;
+                } else {
+                    repo->nodes[i] = current->nextParent;
+                }
+                free(current->commit); // Free memory associated with the commit
+                free(current); // Free memory associated with the graph node
+                return;
+            }
+            prev = current;
+            current = current->nextParent;
+        }
+    }
+}
+
+commit* undoMove(commitStack* stack) {
+    if (isEmpty(stack)) {
+        printf("Error: Commit history is empty.\n");
+        return NULL;
+    }
+    // Get the pointer to the next commit without popping it
+    return stack->top->next->commit;
+}
+
+repository* copyRepository(repository* originalRepo) {
+    repository* newRepo = initRepository();
+
+    // Copy commits and graph nodes
+    for (int i = 0; i < N; i++) {
+        graphNode* current = originalRepo->nodes[i];
+        while (current != NULL) {
+            // Create a new commit
+            commit* newCommit = (commit*)malloc(sizeof(commit));
+            memcpy(newCommit, current->commit, sizeof(commit));
+
+            // Create a new graph node
+            graphNode* newNode = createGraphNode(newCommit);
+
+            // Add the new graph node to the new repository
+            int index = current->commit->id % N;
+            if (newRepo->nodes[index] == NULL) {
+                newRepo->nodes[index] = newNode;
+            } else {
+                newNode->nextParent = newRepo->nodes[index];
+                newRepo->nodes[index] = newNode;
+            }
+
+            current = current->nextParent;
+        }
+    }
+
+    // Copy files
+    for (int i = 0; i < N; i++) {
+        file* currentFile = originalRepo->fileHash[i];
+        while (currentFile != NULL) {
+            // Create a new file
+            file* newFile = (file*)malloc(sizeof(file));
+            memcpy(newFile, currentFile, sizeof(file));
+
+            // Add the new file to the new repository
+            int index = currentFile->id % N;
+            if (newRepo->fileHash[index] == NULL) {
+                newRepo->fileHash[index] = newFile;
+            } else {
+                newFile->next = newRepo->fileHash[index];
+                newRepo->fileHash[index] = newFile;
+            }
+
+            currentFile = currentFile->next;
+        }
+    }
+
+    return newRepo;
+}
+
+graphNode* findCommonAncestor(graphNode* commit1, graphNode* commit2) {
+    // Traverse ancestors of commit1 and check if they are ancestors of commit2
+    graphNode* ancestor1 = commit1;
+    while (ancestor1 != NULL) {
+        graphNode* ancestor2 = commit2;
+        while (ancestor2 != NULL) {
+            if (ancestor1 == ancestor2) {
+                return ancestor1; // Common ancestor found
+            }
+            ancestor2 = ancestor2->parent;
+        }
+        ancestor1 = ancestor1->parent;
+    }
+
+    return NULL; // No common ancestor found
+}
+
+void applyChanges(repository* repo, graphNode* commit, graphNode* commonAncestor) {
+    // Apply changes from commit to the current branch
+    while (commit != commonAncestor) {
+        // Iterate over files in the commit and merge changes
+        for (int i = 0; i < commit->commit->fileCount; i++) {
+            int fileID = commit->commit->fileIDs[i];
+            char* content = getFileContent(fileID, repo);
+
+            // Check if file exists in common ancestor
+            char* ancestorContent = getFileContent(fileID, repo);
+
+            if (strcmp(content, ancestorContent) != 0) {
+                // Files have diverged, handle conflict resolution here
+                printf("Conflict detected in file %d. Manual resolution required.\n", fileID);
+            } else {
+                // Files are the same, no conflict
+                // Perform automatic merge (if applicable) or keep the content as-is
+                printf("File %d merged successfully.\n", fileID);
+            }
+        }
+
+        // Move to the parent commit
+        commit = commit->parent;
+    }
+}
+
+
+void merge(repository* repo, graphNode* commit1, graphNode* commit2) {
+    // Find common ancestor(s) of commit1 and commit2
+    graphNode* commonAncestor = findCommonAncestor(commit1, commit2);
+
+    if (commonAncestor == NULL) {
+        printf("No common ancestor found. Merge aborted.\n");
+        return;
+    }
+
+    // Apply changes from commit1 and commit2 to the current branch
+    applyChanges(repo, commit1, commonAncestor);
+    applyChanges(repo, commit2, commonAncestor);
+
+    printf("Merge successful.\n");
+}
+
+
+
+void gitLog(repository* repo, graphNode* commit) {
+    while (commit != NULL) {
+        displayCommit(commit->commit, repo);
+        commit = commit->parent; // Move to the parent commit
+    }
+}
+
+// Function to register a new user
+void signup(User* users, int* userCount) {
+    if (*userCount >= MAX_USERS) {
+        printf("Maximum number of users reached.\n");
+        return;
+    }
+
+    printf("Enter username: ");
+    fgets(users[*userCount].username, MAX_USERNAME_LENGTH, stdin);
+    users[*userCount].username[strcspn(users[*userCount].username, "\n")] = '\0';  // Remove newline character
+
+    printf("Enter password: ");
+    fgets(users[*userCount].password, MAX_PASSWORD_LENGTH, stdin);
+    users[*userCount].password[strcspn(users[*userCount].password, "\n")] = '\0';  // Remove newline character
+
+    (*userCount)++;
+    printf("User registered successfully.\n");
+}
+
+// Function to authenticate a user
+int login(User* users, int userCount) {
+    char username[MAX_USERNAME_LENGTH];
+    char password[MAX_PASSWORD_LENGTH];
+
+    printf("Enter username: ");
+    fgets(username, MAX_USERNAME_LENGTH, stdin);
+    username[strcspn(username, "\n")] = '\0';  // Remove newline character
+
+    printf("Enter password: ");
+    fgets(password, MAX_PASSWORD_LENGTH, stdin);
+    password[strcspn(password, "\n")] = '\0';  // Remove newline character
+
+    for (int i = 0; i < userCount; i++) {
+        if (strcmp(users[i].username, username) == 0 && strcmp(users[i].password, password) == 0) {
+            return i;  // Return index of the logged-in user
+        }
+    }
+
+    return -1;  // Login failed
+}
+
 // MAIN FUNCTION
 
+
 int main() {
-    repository* myRepo = initRepository();
+    
+    repository* myRepo ;
+    User users[MAX_USERS];
+    int userCount = 0;
+    int loggedInUserIndex = -1;
+    char fileName[50];
 
-    srand(time(NULL));
+    int choice;
+    char input[100];
 
-    graphNode* node1 = createGraphNode(createCommit("Initial commit", 1, "John Doe"));
-    graphNode* node2 = createGraphNode(createCommit("Fix bug #123", 2, "Alice Smith"));
-    graphNode* node3 = createGraphNode(createCommit("Add feature X", 3, "Bob Johnson"));
+    while (1) {
+        printf("\n");
+        printf("1. Login\n");
+        printf("2. Signup\n");
+        printf("0. Exit\n");
+        printf("Enter your choice: ");
+        scanf("%d", &choice);
+        getchar(); // Clear input buffer
 
-    addParent(node2, node1);
-    addParent(node3, node2);
+        switch (choice) {
+            case 1: // Login
+                loggedInUserIndex = login(users, userCount);
+                if (loggedInUserIndex != -1) {
+                    printf("Login successful.\n");
+                } else {
+                    printf("Invalid username or password.\n");
+                }
+                break;
 
-    addFileToCommit(node1->commit, "Trial.txt", "C:/Users/Atharva/Desktop/Trial.txt", myRepo);
+            case 2: // Signup
+                signup(users, &userCount);
+                break;
 
-    // Create and initialize commit stack
-    commitStack* stack = initCommitStack();
+            case 0: // Exit
+                printf("Exiting program.\n");
+                // Free memory and exit
+                // Remember to free memory allocated for users and repository
+                return 0;
 
-    // Push commits onto the stack
-    push(node1->commit, stack);
-    push(node2->commit, stack);
-    push(node3->commit, stack);
+            default:
+                printf("Invalid choice. Please enter a valid option.\n");
+                break;
+        }
 
-    // Display all commits
-    printf("All Commits:\n");
-    displayCommit(node1->commit, myRepo);
-    displayCommit(node2->commit, myRepo);
-    displayCommit(node3->commit, myRepo);
 
-    printf("History :\n");
-    // Display commit history
-    displayCommitHistory(stack);
+        char repoName[MAX_USERNAME_LENGTH];
+        printf("Enter repository name: ");
+        fgets(repoName, MAX_USERNAME_LENGTH, stdin);
+        repoName[strcspn(repoName, "\n")] = '\0';  // Remove newline character
+        printf("Repository initialized with name: %s\n", repoName);
+       
 
-    // Creating branches
-    createBranch(myRepo, "main");
-    createBranch(myRepo, "feature1");
-    createBranch(myRepo, "feature2");
+        if (loggedInUserIndex != -1) {
+            // Start menu
+            while (1) {
+                printf("\n");
+                printf("1. Init\n");
+                printf("2. Add content\n");
+                printf("3. Display data\n");
+                printf("4. History\n");
+                printf("5. Branch\n");
+                printf("6. Merge\n");
+                printf("7. Git log\n");
+                printf("8. Logout\n");
+                printf("Enter your choice: ");
+                scanf("%d", &choice);
+                getchar(); // Clear input buffer
 
-    // Switching branches
-    checkoutBranch(myRepo, "feature1");
+                switch (choice) {
+                    case 1: // Init
+                        initRepository(myRepo);
+                        break;
+                            
+                    case 2: // Add file
+                        
+                        printf("Enter file name: ");
+                        scanf("%s", fileName);
 
-    // Free stack memory
-    stackNode* current = stack->top;
-    while (current != NULL) {
-        stackNode* temp = current;
-        current = current->next;
-        free(temp);
+                        readFile(fileName);
+                        break;
+
+                    case 3: // Display data
+                        printf("Displaying data:\n");
+                        displayDataFunction(myRepo);
+                        break;
+
+
+                    case 4: // History
+                        // Implement history functionality
+                        // historyFunction();
+                        break;
+
+                    case 5: // Branch
+                        // Implement branching functionality
+                        // branchFunction();
+                        break;
+
+                    case 6: // Merge
+                        // Implement merging functionality
+                        // mergeFunction();
+                        break;
+
+                    case 7: // Git log
+                        // Implement git log functionality
+                        // gitLogFunction();
+                        break;
+
+                    case 8: // Logout
+                        loggedInUserIndex = -1; // Logout
+                        printf("Logged out successfully.\n");
+                        break;
+
+                    default:
+                        printf("Invalid choice. Please enter a valid option.\n");
+                        break;
+                }
+
+                if (choice == 8) {
+                    break; // Exit the inner while loop if user chooses to logout
+                }
+            }
+        }
     }
-    free(stack);
-
-    freeCommitTree(node1);
-    freeCommitTree(node2);
-    freeCommitTree(node3);
 
     return 0;
 }
