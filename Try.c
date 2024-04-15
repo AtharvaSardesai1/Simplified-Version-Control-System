@@ -1,9 +1,11 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
+#include <limits.h>
 #include <time.h>
+#include <string.h>
 
+#define N 10
 #define MAX_FILE_CONTENT_SIZE 1000
 
 int nextFileID = 1; // Global variable to track the next available file ID
@@ -16,7 +18,47 @@ typedef struct File {
 
 File* head = NULL; // Global variable to store the head of the linked list
 
+typedef struct commit {
+    char message[100];
+    int fileID;
+    char author[50];
+    char timestamp[20];
+} commit;
+
+typedef struct graphNode {
+    struct commit* commit;
+    struct graphNode* parent; // Parent in the directed acyclic graph
+    struct graphNode* nextParent; // Next parent in the linked list of parents
+} graphNode;
+
+typedef struct repository {
+    struct graphNode* nodes[N];
+    struct file* fileHash[N]; // Array of linked lists for file storage
+    int currentBranchIndex; // Index of the current branch in the branch array
+    int branchCount; // Total number of branches
+    char* branches[N]; // Array to store branch names
+} repository;
+
+
+
+//-----------------FUNCTIONS--------------------------------------------
 // Function to print the changes between two files
+
+graphNode* createGraphNode(commit* commit) {
+    graphNode* newNode = (graphNode*)malloc(sizeof(graphNode));
+    newNode->commit = commit;
+    newNode->parent = NULL;
+    newNode->nextParent = NULL;
+
+    return newNode;
+}
+
+void addParent(graphNode* child, graphNode* parent) {
+    // Add parent to the beginning of the linked list
+    parent->nextParent = child->parent;
+    child->parent = parent;
+}
+
 void printFileChanges(const char* originalFileName, const char* updatedFileName) {
     FILE* originalFile = fopen(originalFileName, "r");
     FILE* updatedFile = fopen(updatedFileName, "r");
@@ -76,20 +118,20 @@ void printFileChanges(const char* originalFileName, const char* updatedFileName)
     fclose(updatedFile);
 }
 
-// Function to commit changes to a file
-void commit(const char* fileName) {
+commit* commit_file(const char* fileName, const char* message, int id, const char* author) {
     FILE* file = fopen(fileName, "r");
     if (file == NULL) {
         printf("Error: Unable to open file.\n");
-        return;
+        return NULL;
     }
+    printf("22222222\n");
 
     // Allocate memory for the new file node
     File* newFile = (File*)malloc(sizeof(File));
     if (newFile == NULL) {
         printf("Error: Memory allocation failed.\n");
         fclose(file);
-        return;
+        return NULL;
     }
 
     // Initialize file ID and content
@@ -97,15 +139,14 @@ void commit(const char* fileName) {
     newFile->next = NULL;
     newFile->content[0] = '\0'; // Initialize content to an empty string
 
+    printf("4444444\n");
     // Read file content line by line and concatenate to newFile->content
     char line[MAX_FILE_CONTENT_SIZE];
     while (fgets(line, sizeof(line), file) != NULL) {
         strcat(newFile->content, line);
     }
 
-    // Close file
-    fclose(file);
-
+    
     // Store the new file in the linked list
     if (head == NULL) {
         head = newFile;
@@ -118,8 +159,33 @@ void commit(const char* fileName) {
         // Append the new file
         temp->next = newFile;
     }
+    printf("55555555\n");
+    // Allocate memory for the new commit
+    commit* newCommit = (commit*)malloc(sizeof(commit));
+    if (newCommit == NULL) {
+        printf("Error: Memory allocation failed.\n");
+        return NULL;
+    }
+    printf("aaaaaaaaa\n");
 
-    printf("File committed successfully. File ID: %d\n", newFile->fileID);
+    // Populate commit fields
+    snprintf(newCommit->message, sizeof(newCommit->message), "%s", message);
+    newCommit->fileID = newFile->fileID;
+    snprintf(newCommit->author, sizeof(newCommit->author), "%s", author);
+    printf("bbbbbbbbbb\n");
+
+    // Generating a timestamp (for example purposes)
+    time_t t = time(NULL);
+    struct tm* tm_info = localtime(&t);
+    strftime(newCommit->timestamp, sizeof(newCommit->timestamp), "%Y-%m-%d %H:%M:%S", tm_info);
+    printf("cccccccccc\n");
+
+    // Close file
+    fclose(file);
+
+
+    return newCommit;
+    printf("66666666\n");
 }
 
 // Function to print the contents of the linked list
@@ -138,8 +204,18 @@ int main() {
     printf("Enter file name: ");
     scanf("%s", fileName);
 
-    // Commit the original file
-    commit(fileName);
+    char message[100];
+    printf("Enter commit message: ");
+    scanf("%s", message); // Assuming single-word messages for simplicity
+
+    // Assuming you have some way to get the author name, for example:
+    char author[100];
+    printf("Enter author : ");
+    scanf("%s", author); 
+
+    // Commit the original file with the provided message and author
+    commit_file(fileName, message, nextFileID, author);
+    printf("ggggggggg\n");
 
     // Modify the file content (assuming the file is modified externally)
     // Here, you can write code to modify the file content
@@ -153,10 +229,11 @@ int main() {
     printFileChanges(fileName, updatedFileName);
 
     // Commit the updated file
-    commit(updatedFileName);
+    commit_file(updatedFileName, message, nextFileID, author);
 
     // Print the contents of the linked list
-    printFileList();
+    //printFileList();
 
     return 0;
 }
+
