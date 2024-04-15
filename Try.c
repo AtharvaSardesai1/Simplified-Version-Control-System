@@ -1,4 +1,3 @@
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <limits.h>
@@ -33,7 +32,7 @@ typedef struct graphNode {
 
 typedef struct repository {
     struct graphNode* nodes[N];
-    struct file* fileHash[N]; // Array of linked lists for file storage
+    File* fileHash[N]; // Array of linked lists for file storage
     int currentBranchIndex; // Index of the current branch in the branch array
     int branchCount; // Total number of branches
     char* branches[N]; // Array to store branch names
@@ -43,6 +42,18 @@ typedef struct repository {
 
 //-----------------FUNCTIONS--------------------------------------------
 // Function to print the changes between two files
+repository* initRepository() {
+    repository* newRepo = (repository*)malloc(sizeof(repository));
+    for (int i = 0; i < N; i++) {
+        newRepo->nodes[i] = NULL;
+        newRepo->fileHash[i] = NULL;
+        newRepo->branches[i] = NULL;
+    }
+    newRepo->currentBranchIndex = -1; // No branch selected initially
+    newRepo->branchCount = 0;
+    
+}
+
 
 graphNode* createGraphNode(commit* commit) {
     graphNode* newNode = (graphNode*)malloc(sizeof(graphNode));
@@ -118,7 +129,7 @@ void printFileChanges(const char* originalFileName, const char* updatedFileName)
     fclose(updatedFile);
 }
 
-commit* commit_file(const char* fileName, const char* message, int id, const char* author) {
+graphNode* commit_file(const char* fileName, const char* message, int id, const char* author, repository* repo) {
     FILE* file = fopen(fileName, "r");
     if (file == NULL) {
         printf("Error: Unable to open file.\n");
@@ -135,34 +146,34 @@ commit* commit_file(const char* fileName, const char* message, int id, const cha
     }
 
     // Initialize file ID and content
-    newFile->fileID = nextFileID++;
+    newFile->fileID = id; // Assign the provided ID instead of incrementing nextFileID
     newFile->next = NULL;
     newFile->content[0] = '\0'; // Initialize content to an empty string
 
     printf("4444444\n");
     // Read file content line by line and concatenate to newFile->content
     char line[MAX_FILE_CONTENT_SIZE];
-    while (fgets(line, sizeof(line), file) != NULL) {
-        strcat(newFile->content, line);
+    size_t bytesRead;
+    while ((bytesRead = fread(line, 1, sizeof(line), file)) > 0) {
+        strncat(newFile->content, line, bytesRead);
     }
 
-    // Store the new file in the linked list
-    if (head == NULL) {
-        head = newFile;
+    // Store the new file in the linked list and file hash
+    int index = id % N;
+    if (repo->fileHash[index] == NULL) {
+        repo->fileHash[index] = newFile;
     } else {
-        // Traverse to the end of the list
-        File* temp = head;
-        while (temp->next != NULL) {
-            temp = temp->next;
-        }
-        // Append the new file
-        temp->next = newFile;
+        newFile->next = repo->fileHash[index];
+        repo->fileHash[index] = newFile;
     }
-    printf("55555555\n");
+
+    printf("File added successfully. ID: %d\n", newFile->fileID);
+
     // Allocate memory for the new commit
     commit* newCommit = (commit*)malloc(sizeof(commit));
     if (newCommit == NULL) {
         printf("Error: Memory allocation failed.\n");
+        fclose(file);
         return NULL;
     }
     printf("aaaaaaaaa\n");
@@ -182,8 +193,12 @@ commit* commit_file(const char* fileName, const char* message, int id, const cha
     // Close file
     fclose(file);
 
-    return newCommit;
+    // Create a graph node for the commit
+    graphNode* newNode = createGraphNode(newCommit);
+
+    return newNode;
 }
+
 
 
 // Function to print the contents of the linked list
@@ -197,7 +212,79 @@ void printFileList() {
     }
 }
 
+void createBranch(repository* repo, const char* branchName) {
+    if (repo->branchCount < N) {
+        repo->branches[repo->branchCount] = strdup(branchName);
+        repo->branchCount++;
+        printf("Branch created: %s\n", branchName);
+    } else {
+        printf("Maximum number of branches reached.\n");
+    }
+}
+
+// Function to switch to a different branch
+void checkoutBranch(repository* repo, const char* branchName) {
+    for (int i = 0; i < repo->branchCount; i++) {
+        if (strcmp(repo->branches[i], branchName) == 0) {
+            repo->currentBranchIndex = i;
+            printf("Switched to branch: %s\n", branchName);
+            return;
+        }
+    }
+    printf("Branch not found: %s\n", branchName);
+}
+
+void freeCommitTree(graphNode* root) {
+    if (root != NULL) {
+        freeCommitTree(root->nextParent);
+        free(root->commit);
+        free(root);
+    }
+}
+
+void printRepository(repository* repo) {
+    printf("Repository Contents:\n");
+    printf("Current Branch Index: %d\n", repo->currentBranchIndex);
+    printf("Branch Count: %d\n", repo->branchCount);
+    
+    // Print branches
+    printf("Branches:\n");
+    for (int i = 0; i < repo->branchCount; i++) {
+        printf("%d: %s\n", i, repo->branches[i]);
+    }
+
+    // Print file hash
+    printf("File Hash:\n");
+    for (int i = 0; i < N; i++) {
+        printf("Index %d:\n", i);
+        File* file = repo->fileHash[i];
+        while (file != NULL) {
+            printf("File ID: %d\n", file->fileID);
+            printf("Content:\n%s\n", file->content);
+            file = file->next;
+        }
+    }
+
+    // Print commit nodes
+    printf("Commit Nodes:\n");
+    for (int i = 0; i < N; i++) {
+        printf("Index %d:\n", i);
+        graphNode* node = repo->nodes[i];
+        while (node != NULL) {
+            printf("Message: %s\n", node->commit->message);
+            printf("File ID: %d\n", node->commit->fileID);
+            printf("Author: %s\n", node->commit->author);
+            printf("Timestamp: %s\n", node->commit->timestamp);
+            node = node->nextParent;
+        }
+    }
+}
+
+
 int main() {
+    repository* myRepo = initRepository();
+
+    srand(time(NULL));
     char fileName[50];
     printf("Enter file name: ");
     scanf("%s", fileName);
@@ -211,7 +298,7 @@ int main() {
  
 
     // Commit the original file with the provided message and author
-    commit_file(fileName, message, nextFileID, author);
+    commit_file(fileName, message, nextFileID, author, myRepo);
     printf("ggggggggg\n");
 
     // Modify the file content (assuming the file is modified externally)
@@ -229,11 +316,31 @@ int main() {
     printFileChanges(fileName, updatedFileName);
 
     // Commit the updated file
-    commit_file(updatedFileName, message, nextFileID, author);
+    commit_file(updatedFileName, message, nextFileID, author, myRepo);
+
+    char branch[100];
+    printf("Enter the branch name: ");
+    scanf("%s", branch);
+
+    char branch2[100];
+    printf("Enter the branch name: ");
+    scanf("%s", branch2);
+
+    createBranch(myRepo, branch);
+    createBranch(myRepo, branch2);
+
+    printRepository(myRepo);
+
+
+    checkoutBranch(myRepo, branch);
+
+    checkoutBranch(myRepo, branch2);
+
+
+
 
     // Print the contents of the linked list
     //printFileList();
 
     return 0;
 }
-
