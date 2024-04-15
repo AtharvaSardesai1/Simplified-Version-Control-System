@@ -146,7 +146,6 @@ commit* commit_file(const char* fileName, const char* message, int id, const cha
         strcat(newFile->content, line);
     }
 
-    
     // Store the new file in the linked list
     if (head == NULL) {
         head = newFile;
@@ -183,10 +182,9 @@ commit* commit_file(const char* fileName, const char* message, int id, const cha
     // Close file
     fclose(file);
 
-
     return newCommit;
-    printf("66666666\n");
 }
+
 
 // Function to print the contents of the linked list
 void printFileList() {
@@ -209,9 +207,8 @@ int main() {
     scanf("%s", message); // Assuming single-word messages for simplicity
 
     // Assuming you have some way to get the author name, for example:
-    char author[100];
-    printf("Enter author : ");
-    scanf("%s", author); 
+    const char* author = "John Doe"; 
+ 
 
     // Commit the original file with the provided message and author
     commit_file(fileName, message, nextFileID, author);
@@ -224,6 +221,9 @@ int main() {
     char updatedFileName[50];
     printf("Enter updated file name: ");
     scanf("%s", updatedFileName);
+
+    printf("Enter commit message: ");
+    scanf("%s", message); // Assuming single-word messages for simplicity
 
     // Print the changes between the original and updated files
     printFileChanges(fileName, updatedFileName);
