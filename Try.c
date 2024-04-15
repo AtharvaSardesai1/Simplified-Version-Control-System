@@ -30,19 +30,45 @@ void printFileChanges(const char* originalFileName, const char* updatedFileName)
     char originalLine[MAX_FILE_CONTENT_SIZE];
     char updatedLine[MAX_FILE_CONTENT_SIZE];
     int lineNum = 1;
+    int differencesFound = 0; // Flag to track if any differences were found
 
     // Compare lines of both files until one of them reaches the end
     while (fgets(originalLine, sizeof(originalLine), originalFile) != NULL &&
            fgets(updatedLine, sizeof(updatedLine), updatedFile) != NULL) {
         // Compare lines
         if (strcmp(originalLine, updatedLine) != 0) {
-            printf("Line %d:\n", lineNum);
+            printf("Difference found in line %d:\n", lineNum);
             printf("Original: %s", originalLine);
             printf("Updated: %s", updatedLine);
             printf("\n");
         }
         lineNum++;
     }
+
+    // If one file has more lines than the other, print the remaining lines
+    while (fgets(originalLine, sizeof(originalLine), originalFile) != NULL) {
+        printf("Difference found in line %d:\n", lineNum);
+        printf("Original: %s", originalLine);
+        printf("Updated: (End of file)\n");
+        printf("\n");
+        differencesFound = 1;
+        lineNum++;
+    }
+
+    while (fgets(updatedLine, sizeof(updatedLine), updatedFile) != NULL) {
+        printf("Difference found in line %d:\n", lineNum);
+        printf("Original: (End of file)\n");
+        printf("Updated: %s", updatedLine);
+        printf("\n");
+        differencesFound = 1;
+        lineNum++;
+    }
+
+    // If no differences were found, print a message
+    if (!differencesFound) {
+        printf("No differences found between %s and %s.\n", originalFileName, updatedFileName);
+    }
+
 
     // Close files
     fclose(originalFile);
